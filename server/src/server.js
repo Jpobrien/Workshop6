@@ -4,6 +4,7 @@ var bodyParser = require('body-parser');
 var database = require('./database');
 var readDocument = database.readDocument;
 var StatusUpdateSchema = require('./schemas/statusupdate.json');
+var commentSchema = require('./schemas/comment.json');
 var validate = require('express-jsonschema').validate;
 var writeDocument = database.writeDocument;
 var addDocument = database.addDocument;
@@ -42,6 +43,28 @@ app.post('/feeditem',
     }
 });
 
+//post comment
+app.post('/feeditem/:feedItemId/comment', validate({ body: commentSchema }), function(req, res) {
+  var time = new Date().getTime();
+  var feedItemId = req.params.feedItemId;
+  var fromUser = getUserIdFromToken(req.get('Authorization'));
+  var body = req.body;
+  var feedItem = readDocument('feedItems', feedItemId);
+  var newComment = {
+    "author": body.author,
+    "contents": body.contents,
+    "postDate": time,
+    "likeCounter": []
+  }
+  if(fromUser === body.author){
+    feedItem.comments.push(newComment);
+    writeDocument('feedItems', feedItem);
+    res.status(201);
+    res.send(getFeedItemSync(feedItemId));
+  } else {
+    res.status(401).end();
+  }
+});
 // Reset database.
 app.post('/resetdb', function(req, res) {
   console.log("Resetting database...");
@@ -154,6 +177,33 @@ app.delete('/feeditem/:feeditemid/likelist/:userid', function(req, res) {
   }
 });
 
+//like a comment
+app.put('/feeditem/:feeditemid/comment/:commentIdx', function(req, res) {
+  var fromUser = getUserIdFromToken(req.get('Authorization'));
+  var userId = req.params
+  console.log(userId);
+  var feedItemId = parseInt(req.params.feeditemid, 10);
+  var feedItem = readDocument('feedItems', feedItemId);
+  var comment = feedItem.comments[req.params.commentIdx];
+  comment.likeCounter.push(fromUser);
+  writeDocument('feedItems', feedItem);
+  comment.author = readDocument('users', comment.author);
+  res.send(comment);
+});
+
+//unlike comment
+app.delete('/feeditem/:feeditemid/comment/:commentIdx', function(req, res) {
+  var fromUser = getUserIdFromToken(req.get('Authorization'));
+  //var userId = parseInt(req.params.userid, 10);
+  var feedItemId = parseInt(req.params.feeditemid, 10);
+  var feedItem = readDocument('feedItems', feedItemId);
+  var comment = feedItem.comments[req.params.commentIdx];
+  var userIndex = comment.likeCounter.indexOf(fromUser);
+  comment.likeCounter.splice(userIndex, 1);
+  writeDocument('feedItems', feedItem);
+  comment.author = readDocument('users', comment.author);
+  res.send(comment);
+});
 // Search for feed item
 app.post('/search', function(req, res) {
   var fromUser = getUserIdFromToken(req.get('Authorization'));
